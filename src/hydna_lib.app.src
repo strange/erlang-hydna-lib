@@ -1,0 +1,13 @@
+{application, hydna_lib,
+    [
+        {description, ""},
+        {vsn, "1"},
+        {registered, []},
+        {applications, [
+                kernel,
+                stdlib,
+                lager
+            ]},
+        {mod, { hydna_lib_app, []}},
+        {env, []}
+    ]}.

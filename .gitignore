@@ -1,0 +1,9 @@
+*.beam
+
+/.eunit
+/ebin
+/deps
+/log
+
+erl_crash.dump
+.hosts.erlang
