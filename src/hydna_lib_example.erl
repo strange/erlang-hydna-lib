@@ -15,8 +15,9 @@
 test() ->
     application:start(lager),
     application:start(hydna_lib),
-    %% hydna_lib:open("localhost:7010/1", <<"rw">>, ?MODULE),
-    hydna_lib:open("localhost:7010/2", <<"rw">>, ?MODULE).
+    hydna_lib:open("localhost:7010/1", <<"rw">>, ?MODULE),
+    hydna_lib:open("localhost:7010/1", <<"rw">>, ?MODULE),
+    hydna_lib:open("strange.hydna.net", <<"rw">>, ?MODULE).
 
 %% Callbacks
 

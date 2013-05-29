@@ -69,4 +69,3 @@ terminate(Channel, State) ->
 * Test stuff :)
 * Handle encoding (utf8/binary)
 * Add a behaviour specification
-* Prevent request to open same channel twice

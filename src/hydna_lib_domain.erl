@@ -17,7 +17,7 @@
 -record(state, {
         connection_state,
         channel_handlers,
-        open_requets_buf = [],
+        open_requests_buf = [],
         socket,
         hostname,
         port
@@ -42,7 +42,7 @@
 %% External API
 
 start_link(Hostname, Port) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Hostname, Port], []).
+    gen_server:start_link(?MODULE, [Hostname, Port], []).
 
 open(Pid, Channel, Mode, Token, Mod) ->
     gen_server:call(Pid, {open, Channel, Mode, Token, Mod}).
@@ -71,7 +71,6 @@ handle_call({open, Channel, Mode, Token, Mod}, _From, State) ->
             State1 = maybe_connect(self(), State0),
             {reply, {ok, Pid}, State1};
         Other ->
-            lager:info("Error: ~p", [Other]),
             {reply, Other, State}
     end;
 
@@ -129,7 +128,7 @@ handle_info({disconnect, Reason}, State) ->
     [Handler ! {disconnect, Reason} || {_, Handler}
         <- dict:to_list(State#state.channel_handlers)],
     {noreply, State#state{connection_state = disconnected,
-            open_requets_buf = []}};
+            open_requests_buf = []}};
 
 handle_info({error, Reason}, State) ->
     [Handler ! {error, Reason} || {_, Handler}
@@ -154,7 +153,7 @@ code_change(_OldVersion, State, _Extra) ->
 
 remove_pid(Pid, State) ->
     NewChannelHandlers = dict:filter(fun(_K, V) ->
-        V =:= Pid
+        V /= Pid
     end, State#state.channel_handlers),
     State#state{ channel_handlers = NewChannelHandlers }.
 
@@ -253,25 +252,30 @@ packet(Channel, Op, Flag, Data) ->
 
 send_open_requests(State) ->
     #state{
-        open_requets_buf = OpenRequestsBuf,
+        open_requests_buf = OpenRequestsBuf,
         socket = Socket
     } = State,
     [begin
         Packet = packet(Channel, ?OPEN, Mode, Token),
         gen_tcp:send(Socket, Packet)
     end || {Channel, Mode, Token} <- OpenRequestsBuf],
-    State#state{open_requets_buf = []}.    
+    State#state{open_requests_buf = []}.    
 
 add_open_request(Channel, Mode, Token, Pid, State) ->
-    lager:info("Registering channel handler."),
     #state{
         channel_handlers = ChannelHandlers,
-        open_requets_buf = OpenRequestsBuf
+        open_requests_buf = OpenRequestsBuf
     } = State,
-    State#state{
-        channel_handlers = dict:store(Channel, Pid, ChannelHandlers),
-        open_requets_buf = [{Channel, Mode, Token}|OpenRequestsBuf]
-    }.
+    case get_handler(Channel, State) of 
+        {ok, _Pid} ->
+            Pid ! {error, handler_already_registered},
+            State;
+        _ ->
+            State#state{
+                channel_handlers = dict:store(Channel, Pid, ChannelHandlers),
+                open_requests_buf = [{Channel, Mode, Token}|OpenRequestsBuf]
+            }
+    end.
 
 get_handler(Channel, State) ->
     dict:find(Channel, State#state.channel_handlers).
