@@ -1,6 +1,8 @@
-Erlang bindings for Hydna (www.hydna.com).
+# Erlang bindings for Hydna (www.hydna.com).
 
 A work in progress!
+
+## Usage
 
 Example:
 
@@ -44,3 +46,10 @@ Example:
     terminate(Channel, State) ->
         lager:info("Handler module was terminated."),
         ok.
+
+## TODO
+
+* Test stuff :)
+* Handle encoding (utf8/binary)
+* Add a behaviour specification
+* Prevent request to open same channel twice
