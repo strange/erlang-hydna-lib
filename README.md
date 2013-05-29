@@ -1,4 +1,6 @@
-# Erlang bindings for Hydna (www.hydna.com).
+# Erlang bindings for Hydna
+
+www.hydna.com
 
 A work in progress!
 
