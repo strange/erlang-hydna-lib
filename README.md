@@ -11,7 +11,20 @@ Example:
 ```erlang
 -module(my_handler).
 
-{ok, Pid} = hydna_lib:open("localhost:7010/2", <<"rw">>, ?MODULE).
+-export([start/0]).
+
+-export([init/1]).
+-export([handle_open/3]).
+-export([handle_message/3]).
+-export([handle_signal/3]).
+-export([handle_close/3]).
+-export([handle_error/3]).
+-export([handle_error/2]).
+-export([handle_info/2]).
+-export([terminate/2]).
+
+start() ->
+    {ok, Pid} = hydna_lib:open("localhost:7010/2", <<"rw">>, ?MODULE).
 
 %% Callbacks
 
