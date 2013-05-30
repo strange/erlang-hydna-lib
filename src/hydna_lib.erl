@@ -69,6 +69,6 @@ parse_uri(URI) ->
                 Other ->
                     Other
             end;
-        Other ->
+        _Other ->
             {error, invalid_uri}
     end.

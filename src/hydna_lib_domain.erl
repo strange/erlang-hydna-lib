@@ -4,7 +4,7 @@
 
 -export([start_link/2]).
 -export([open/5]).
--export([send/3]).
+-export([send/4]).
 -export([emit/3]).
 
 -export([init/1]).
@@ -47,8 +47,10 @@ start_link(Hostname, Port) ->
 open(Pid, Channel, Mode, Token, Mod) ->
     gen_server:call(Pid, {open, Channel, Mode, Token, Mod}).
 
-send(Pid, Channel, Message) ->
-    gen_server:cast(Pid, {send, Channel, Message}).
+send(Pid, Channel, utf8, Message) ->
+    gen_server:cast(Pid, {send, Channel, 1, Message});
+send(Pid, Channel, raw, Message) ->
+    gen_server:cast(Pid, {send, Channel, 0, Message}).
 
 emit(Pid, Channel, Message) ->
     gen_server:cast(Pid, {emit, Channel, Message}).
@@ -64,7 +66,8 @@ init([Hostname, Port]) ->
     {ok, State}.
 
 handle_call({open, Channel, Mode, Token, Mod}, _From, State) ->
-    case hydna_lib_channel:start_link(Mod, State#state.hostname, self()) of
+    Hostname = State#state.hostname,
+    case hydna_lib_channel:start_link(Mod, Hostname, self(), Channel) of
         {ok, Pid} ->
             erlang:monitor(process, Pid),
             State0 = add_open_request(Channel, Mode, Token, Pid, State),
@@ -77,8 +80,8 @@ handle_call({open, Channel, Mode, Token, Mod}, _From, State) ->
 handle_call(_Message, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({send, Channel, Message}, State) ->
-    Data = <<Channel:32, 0:2, ?DATA:3, 1:3, Message/binary>>,
+handle_cast({send, Channel, Encoding, Message}, State) ->
+    Data = <<Channel:32, 0:2, ?DATA:3, Encoding:3, Message/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
     ok = gen_tcp:send(State#state.socket, Packet),
@@ -109,9 +112,9 @@ handle_info({open_denied, Channel, Message}, State) ->
     Handler ! {open_denied, Channel, Message},
     {noreply, State};
 
-handle_info({data, Channel, Message}, State) ->
+handle_info({data, Channel, Prio, Encoding, Message}, State) ->
     {ok, Handler} = get_handler(Channel, State),
-    Handler ! {data, Channel, Message},
+    Handler ! {data, Channel, Prio, Encoding, Message},
     {noreply, State};
 
 handle_info({emit, 0, Message}, State) ->
@@ -157,7 +160,7 @@ remove_pid(Pid, State) ->
     end, State#state.channel_handlers),
     State#state{ channel_handlers = NewChannelHandlers }.
 
-maybe_connect(Pid, #state{connection_state = connected} = State) ->
+maybe_connect(_Pid, #state{connection_state = connected} = State) ->
     send_open_requests(State);
 maybe_connect(_Pid, #state{connection_state = connecting} = State) ->
     State;
@@ -218,8 +221,9 @@ recv_payload(Pid, Socket, Len) ->
             {open_redirect, Ch, Msg};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_DENY:3, Reason/binary>>} ->
             {open_denied, Ch, Reason};
-        {ok, <<Ch:32, _:2, ?DATA:3, _:3, Message/binary>>} ->
-            {data, Ch, Message};
+        {ok, <<Ch:32, _:2, ?DATA:3, Prio:2, Enc:1, Message/binary>>} ->
+            Encoding = case Enc of 0 -> raw; 1 -> utf8 end,
+            {data, Ch, Prio, Encoding, Message};
         {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_END:3/integer, Message/binary>>} ->
             {close, Ch, Message};
         {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_SIGNAL:3/integer, Message/binary>>} ->

@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/3]).
+-export([start_link/4]).
 
 -export([init/1]).
 -export([handle_call/3]).
@@ -15,31 +15,34 @@
         handler_mod,
         handler_state,
         domain_name,
-        domain_pid
+        domain_pid,
+        channel
     }).
 
 %% External API
 
-start_link(Mod, DomainName, DomainPid) ->
-    Args = [Mod, DomainName, DomainPid],
+start_link(Mod, DomainName, DomainPid, Channel) ->
+    Args = [Mod, DomainName, DomainPid, Channel],
     gen_server:start_link(?MODULE, Args, []).
 
 %% Callbacks
 
-init([Mod, DomainName, DomainPid]) ->
-    try Mod:init(DomainName) of
+init([Mod, DomainName, DomainPid, Channel]) ->
+    try Mod:init(DomainName, Channel) of
         {ok, HandlerState} ->
             State = #state{
                 handler_state = HandlerState,
                 handler_mod = Mod,
                 domain_name = DomainName,
-                domain_pid = DomainPid
+                domain_pid = DomainPid,
+                channel = Channel
             },
             {ok, State};
         {stop, Reason} ->
             {stop, Reason}
     catch
         ErrorClass:Reason ->
+            lager:info("Error: ~p", [erlang:get_stacktrace()]),
             {stop, {ErrorClass, Reason}}
     end.
 
@@ -49,29 +52,30 @@ handle_call(_Message, _From, State) ->
 handle_cast(_Message, State) ->
     {noreply, State}.
 
-handle_info({open_allowed, Channel, Message}, State) ->
-    handle_normal_response(handle_open, Channel, [Message], State);
+handle_info({open_allowed, _Channel, Message}, State) ->
+    handle_normal_response(handle_open, [Message], State);
 
-handle_info({open_denied, Channel, Message}, State) ->
-    handle_error_response(handle_error, [Channel, {denied, Message}], State);
+handle_info({open_denied, _Channel, Message}, State) ->
+    handle_error_response(handle_error, [{denied, Message}], State);
 
-handle_info({data, Channel, Message}, State) ->
-    handle_normal_response(handle_message, Channel, [Message], State);
+handle_info({data, _Channel, Prio, Encoding, Message}, State) ->
+    Meta = [{priority, Prio}, {encoding, Encoding}],
+    handle_normal_response(handle_message, [Message, Meta], State);
 
-handle_info({emit, Channel, Message}, State) ->
-    handle_normal_response(handle_signal, Channel, [Message], State);
+handle_info({emit, _Channel, Message}, State) ->
+    handle_normal_response(handle_signal, [Message], State);
 
 handle_info({error, Reason}, State) ->
     handle_error_response(handle_error, [Reason], State);
 
-handle_info({error, Channel, Reason}, State) ->
-    handle_error_response(handle_error, [Channel, Reason], State);
+handle_info({error, _Channel, Reason}, State) ->
+    handle_error_response(handle_error, [Reason], State);
 
 handle_info({disconnect, Reason}, State) ->
     handle_error_response(handle_error, [Reason], State);
 
-handle_info(Msg, State) ->
-    %% Relay all other messages to the handler.
+handle_info(Message, State) ->
+    handle_normal_response(handle_info, [Message], State),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -83,7 +87,7 @@ code_change(_OldVersion, State, _Extra) ->
 %% Internal API
 
 handle_error_response(CallbackName, Args, State) ->
-    try callback(handle_error, Args, State) of
+    try callback(CallbackName, Args, State) of
         {ok, NewHandlerState} ->
             NewState = State#state{handler_state = NewHandlerState},
             terminate_handler(normal, NewState);
@@ -94,26 +98,40 @@ handle_error_response(CallbackName, Args, State) ->
             terminate_handler({ErrorClass, Reason}, State)
     end.
 
-handle_normal_response(CallbackName, Channel, Args, State) ->
-    try callback(CallbackName, [Channel|Args], State) of
+handle_normal_response(CallbackName, Args, State) ->
+    try callback(CallbackName, Args, State) of
         {stop, NewHandlerState} ->
             NewState = State#state{handler_state = NewHandlerState},
             terminate_handler(normal, NewState);
+        {stop, Reason, NewHandlerState} ->
+            NewState = State#state{handler_state = NewHandlerState},
+            terminate_handler(Reason, NewState);
         {ok, NewHandlerState} ->
             NewState = State#state{handler_state = NewHandlerState},
             {noreply, NewState};
         {message, Msg, NewHandlerState} ->
             NewState = State#state{handler_state = NewHandlerState},
-            hydna_lib_domain:send(NewState#state.domain_pid, Channel, Msg),
+            Channel = State#state.channel,
+            hydna_lib_domain:send(NewState#state.domain_pid, Channel, utf8,
+                Msg),
+            {noreply, NewState};
+        {message, Msg, Encoding, NewHandlerState} when Encoding =:= utf8;
+                                                       Encoding =:= raw ->
+            NewState = State#state{handler_state = NewHandlerState},
+            Channel = State#state.channel,
+            hydna_lib_domain:send(NewState#state.domain_pid, Channel, utf8,
+                Msg),
             {noreply, NewState};
         {signal, Msg, NewHandlerState} ->
             NewState = State#state{handler_state = NewHandlerState},
+            Channel = State#state.channel,
             hydna_lib_domain:emit(NewState#state.domain_pid, Channel, Msg),
             {noreply, NewState};
         Other ->
             terminate_handler({bad_return_value, Other}, State)
     catch
         ErrorClass:Reason ->
+            lager:info("Error: ~p", [erlang:get_stacktrace()]),
             terminate_handler({ErrorClass, Reason}, State)
     end.
 
@@ -125,6 +143,7 @@ terminate_handler(Reason, State) ->
             {stop, {bad_return_value, Other}, State}
     catch
         ErrorClass:Reason ->
+            lager:info("Error: ~p", [erlang:get_stacktrace()]),
             {stop, {ErrorClass, Reason}, State}
     end.
 

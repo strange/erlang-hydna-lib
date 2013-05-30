@@ -9,63 +9,69 @@ A work in progress!
 Example:
 
 ```erlang
--module(my_handler).
+-module(hydna_lib_example).
 
--export([start/0]).
+-behaviour(hydna_lib_handler).
 
--export([init/1]).
--export([handle_open/3]).
+-export([test/0]).
+
+-export([init/2]).
+-export([handle_open/2]).
 -export([handle_message/3]).
--export([handle_signal/3]).
--export([handle_close/3]).
--export([handle_error/3]).
+-export([handle_signal/2]).
+-export([handle_close/2]).
 -export([handle_error/2]).
 -export([handle_info/2]).
 -export([terminate/2]).
 
-start() ->
-    {ok, Pid} = hydna_lib:open("localhost:7010/2", <<"rw">>, ?MODULE).
+test() ->
+    application:start(lager),
+    application:start(hydna_lib),
+    hydna_lib:open("localhost:7010/1", <<"rw">>, ?MODULE).
 
 %% Callbacks
 
-init(_Domain) ->
-    {ok, state}.
+init(Domain, Channel) ->
+    {ok, [{domain, Domain}, {channel, Channel}]}.
 
-handle_open(_Channel, Message, State) ->
+handle_open(_Message, State) ->
     lager:info("Channel opened! ~p", [now()]),
     {message, <<"test">>, State}.
 
-handle_message(_Channel, Message, State) ->
-    lager:info("Message: ~p", [Message]),
+handle_message(Message, Meta, State) ->
+    Encoding = proplists:get_value(encoding, Meta),
+    lager:info("Message: ~p in ~p", [Message, Encoding]),
     {ok, State}.
 
-handle_signal(Channel, Message, State) ->
-    lager:info("Signal: ~p ~p", [Message, Channel]),
+handle_signal(Message, State) ->
+    lager:info("Signal: ~p", [Message]),
     {ok, State}.
 
-handle_close(_Channel, Reason, State) ->
+handle_close(Reason, State) ->
     lager:info("Close: ~p", [Reason]),
     {ok, State}.
 
-handle_error(_Channel, Reason, State) ->
-    lager:info("Error: ~p", [Reason]),
-    {ok, State}.
-
 handle_error(Reason, State) ->
-    lager:info("Domain-error: ~p", [Reason]),
+    lager:info("Error: ~p", [Reason]),
     {ok, State}.
 
 handle_info(Message, State) ->
     lager:info("Other message: ~p", [Message]),
     {ok, State}.
 
-terminate(Channel, State) ->
+terminate(_Reason, _State) ->
     lager:info("Handler module was terminated."),
     ok.
 ```
 
 ## TODO
 
-* Test stuff :)
-* Handle encoding (utf8/binary)
-* Add a behaviour specification
+* I just wrote this ... will need to do some testing :)
+* `handle_message/3` takes a proplist (`Meta`) as it's second argument. I'm
+  considering expanding the list into two separate arguments: `Encoding` and
+  `Priority`.
+* Most callbacks used to take a `Channel`-argument. I moved the argument to
+  `init/2` as it cannot change in the of process lifetime. This resulted in
+  shorter function signatures, but makes it harder to pattern match on channel
+  (when using the same handler module for multiple channels) and I need to
+  create a way to distinguish between channel-related- and domain-wide errors.
