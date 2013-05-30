@@ -77,3 +77,5 @@ terminate(Reason, _State) ->
   channel (when using the same handler module for multiple channels) and I
   need to create a way to distinguish between channel-related- and domain-wide
   errors.
+* Get rid of some OTP cruft and look over the role of the supervisor (should
+  probably do the work of `hydna_lib_proxy`).
