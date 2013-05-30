@@ -36,11 +36,11 @@ init(Domain, Channel) ->
 
 handle_open(_Message, State) ->
     lager:info("Channel opened! ~p", [now()]),
-    {message, <<"test">>, State}.
+    self() ! {send, <<"Hello world!">>},
+    {ok, State}.
 
-handle_message(Message, Meta, State) ->
-    Encoding = proplists:get_value(encoding, Meta),
-    lager:info("Message: ~p in ~p", [Message, Encoding]),
+handle_message(Message, _Meta, State) ->
+    lager:info("Message: ~p", [Message]),
     {ok, State}.
 
 handle_signal(Message, State) ->
@@ -55,12 +55,13 @@ handle_error(Reason, State) ->
     lager:info("Error: ~p", [Reason]),
     {ok, State}.
 
-handle_info(Message, State) ->
-    lager:info("Other message: ~p", [Message]),
+handle_info({send, Message}, State) ->
+    {message, Message, State};
+handle_info(_Message, State) ->
     {ok, State}.
 
-terminate(_Reason, _State) ->
-    lager:info("Handler module was terminated."),
+terminate(Reason, _State) ->
+    lager:info("Handler module was terminated: ~p", [Reason]),
     ok.
 ```
 

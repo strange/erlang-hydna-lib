@@ -107,26 +107,21 @@ handle_normal_response(CallbackName, Args, State) ->
             NewState = State#state{handler_state = NewHandlerState},
             terminate_handler(Reason, NewState);
         {ok, NewHandlerState} ->
-            NewState = State#state{handler_state = NewHandlerState},
-            {noreply, NewState};
-        {message, Msg, NewHandlerState} ->
-            NewState = State#state{handler_state = NewHandlerState},
-            Channel = State#state.channel,
-            hydna_lib_domain:send(NewState#state.domain_pid, Channel, utf8,
-                Msg),
-            {noreply, NewState};
-        {message, Msg, Encoding, NewHandlerState} when Encoding =:= utf8;
-                                                       Encoding =:= raw ->
-            NewState = State#state{handler_state = NewHandlerState},
-            Channel = State#state.channel,
-            hydna_lib_domain:send(NewState#state.domain_pid, Channel, utf8,
-                Msg),
-            {noreply, NewState};
-        {signal, Msg, NewHandlerState} ->
-            NewState = State#state{handler_state = NewHandlerState},
-            Channel = State#state.channel,
-            hydna_lib_domain:emit(NewState#state.domain_pid, Channel, Msg),
-            {noreply, NewState};
+            {noreply, State#state{handler_state = NewHandlerState}};
+        {message, Msg, NewHandlerState} when is_binary(Msg) ->
+            hydna_lib_domain:send(State#state.domain_pid,
+                State#state.channel, utf8, Msg),
+            {noreply, State#state{handler_state = NewHandlerState}};
+        {message, Msg, Encoding, NewHandlerState} when is_binary(Msg) andalso
+                                                  (Encoding =:= utf8 orelse
+                                                   Encoding =:= raw) ->
+            hydna_lib_domain:send(State#state.domain_pid,
+                State#state.channel, Encoding, Msg),
+            {noreply, State#state{handler_state = NewHandlerState}};
+        {signal, Msg, NewHandlerState} when is_binary(Msg) ->
+            hydna_lib_domain:emit(State#state.domain_pid,
+                State#state.channel, Msg),
+            {noreply, State#state{handler_state = NewHandlerState}};
         Other ->
             terminate_handler({bad_return_value, Other}, State)
     catch
