@@ -71,7 +71,8 @@ terminate(_Reason, _State) ->
   considering expanding the list into two separate arguments: `Encoding` and
   `Priority`.
 * Most callbacks used to take a `Channel`-argument. I moved the argument to
-  `init/2` as it cannot change in the of process lifetime. This resulted in
-  shorter function signatures, but makes it harder to pattern match on channel
-  (when using the same handler module for multiple channels) and I need to
-  create a way to distinguish between channel-related- and domain-wide errors.
+  `init/2` as it cannot change within the lifespan of a process. This resulted
+  in shorter function signatures, but makes it harder to pattern match on
+  channel (when using the same handler module for multiple channels) and I
+  need to create a way to distinguish between channel-related- and domain-wide
+  errors.
