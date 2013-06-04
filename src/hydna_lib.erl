@@ -1,6 +1,13 @@
 -module(hydna_lib).
 
+-export([start/0]).
 -export([open/3]).
+
+start() ->
+    ensure_started(lager),
+    ensure_started(inets),
+    application:start(hydna_lib),
+    ok.
 
 open(URI, RawMode, HandlerMod) ->
     case {parse_uri(URI), parse_mode(RawMode)} of
@@ -9,6 +16,12 @@ open(URI, RawMode, HandlerMod) ->
         Other ->
             Other
     end.
+
+send(URI, Message) ->
+    ok.
+
+emit(URI, Message) ->
+    ok.
 
 %% Internal API
 
@@ -71,4 +84,10 @@ parse_uri(URI) ->
             end;
         _Other ->
             {error, invalid_uri}
+    end.
+
+ensure_started(AppName) ->
+    case application:start(AppName) of
+        ok -> ok;
+        {error, {already_started, AppName}} -> ok
     end.

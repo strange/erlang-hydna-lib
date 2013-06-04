@@ -14,8 +14,7 @@
 -export([terminate/2]).
 
 test() ->
-    application:start(lager),
-    application:start(hydna_lib),
+    hydna_lib:start(),
     hydna_lib:open("localhost:7010/1", <<"rw">>, ?MODULE).
 
 %% Callbacks

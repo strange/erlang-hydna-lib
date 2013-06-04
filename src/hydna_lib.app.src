@@ -6,6 +6,7 @@
         {applications, [
                 kernel,
                 stdlib,
+                inets,
                 lager
             ]},
         {mod, { hydna_lib_app, []}},
