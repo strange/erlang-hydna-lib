@@ -1,7 +1,10 @@
 -module(hydna_lib).
 
 -export([start/0]).
+
 -export([open/3]).
+-export([send/2]).
+-export([emit/2]).
 
 start() ->
     ensure_started(lager),
@@ -11,38 +14,46 @@ start() ->
 
 open(URI, RawMode, HandlerMod) ->
     case {parse_uri(URI), parse_mode(RawMode)} of
-        {{ok, Domain, Port, Chan, Token}, {ok, Mode}} ->
+        {{ok, _Protocol, Domain, Port, Chan, Token, URI2}, {ok, Mode}} ->
             hydna_lib_proxy:open(Domain, Port, Chan, Mode, Token, HandlerMod);
         Other ->
-            Other
+            error_tuple(Other)
     end.
 
 send(URI, Message) ->
-    ok.
+    case parse_uri(URI) of
+        {ok, _Protocol, _Domain, _Port, _Chan, _Token, URI2} ->
+            hydna_lib_push:send(URI2, Message);
+        Other ->
+            error_tuple(Other)
+    end.
 
 emit(URI, Message) ->
-    ok.
+    case parse_uri(URI) of
+        {ok, _Protocol, _Domain, _Port, _Chan, _Token, URI2} ->
+            hydna_lib_push:emit(URI2, Message);
+        Other ->
+            error_tuple(Other)
+    end.
 
 %% Internal API
 
+error_tuple({{error, Reason}, _}) -> {error, Reason};
+error_tuple({_, {error, Reason}}) -> {error, Reason}.
+
+construct_url(Protocol, Hostname, Port, Token) ->
+    ok.
+
 parse_mode(Mode) when is_list(Mode) ->
     parse_mode(list_to_binary(Mode));
-parse_mode(<<"r">>) ->
-    {ok, 1};
-parse_mode(<<"w">>) ->
-    {ok, 2};
-parse_mode(<<"rw">>) ->
-    {ok, 3};
-parse_mode(<<"e">>) ->
-    {ok, 4};
-parse_mode(<<"er">>) ->
-    {ok, 5};
-parse_mode(<<"erw">>) ->
-    {ok, 7};
-parse_mode(<<>>) ->
-    {ok, 0};
-parse_mode(_) ->
-    {error, invalid_mode}. 
+parse_mode(<<"r">>)   -> {ok, 1};
+parse_mode(<<"w">>)   -> {ok, 2};
+parse_mode(<<"rw">>)  -> {ok, 3};
+parse_mode(<<"e">>)   -> {ok, 4};
+parse_mode(<<"er">>)  -> {ok, 5};
+parse_mode(<<"erw">>) -> {ok, 7};
+parse_mode(<<>>)      -> {ok, 0};
+parse_mode(_)         -> {error, invalid_mode}. 
 
 parse_channel(Path) ->
     case string:tokens(Path, "/") of
@@ -75,10 +86,10 @@ parse_uri(URI) ->
                 _ ->
                     {error, invalid_uri}
             end;
-        {ok, {_Protocol, _Credentials, Host, Port, Path, Q}} ->
+        {ok, {Protocol, _Credentials, Host, Port, Path, Q}} ->
             case parse_channel(Path) of
                 {ok, Channel} ->
-                    {ok, Host, Port, Channel, list_to_binary(Q)};
+                    {ok, Protocol, Host, Port, Channel, list_to_binary(Q), URI};
                 Other ->
                     Other
             end;
