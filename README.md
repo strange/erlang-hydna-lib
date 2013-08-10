@@ -65,6 +65,15 @@ terminate(Reason, _State) ->
     ok.
 ```
 
+## Usage (push)
+
+```erlang
+hydna_lib:start().
+hydna_lib:send("http://public.hydna.net/", <<"A message!">>).
+hydna_lib:emit("http://public.hydna.net/", <<"A message!">>).
+```
+
+
 ## TODO
 
 * I just wrote this ... will need to do some testing :)
