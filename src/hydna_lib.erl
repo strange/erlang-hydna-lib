@@ -14,7 +14,7 @@ start() ->
 
 open(URI, RawMode, HandlerMod) ->
     case {parse_uri(URI), parse_mode(RawMode)} of
-        {{ok, _Protocol, Domain, Port, Chan, Token, URI2}, {ok, Mode}} ->
+        {{ok, _Protocol, Domain, Port, Chan, Token, _URI2}, {ok, Mode}} ->
             hydna_lib_proxy:open(Domain, Port, Chan, Mode, Token, HandlerMod);
         Other ->
             error_tuple(Other)
@@ -41,9 +41,6 @@ emit(URI, Message) ->
 error_tuple({{error, Reason}, _}) -> {error, Reason};
 error_tuple({_, {error, Reason}}) -> {error, Reason}.
 
-construct_url(Protocol, Hostname, Port, Token) ->
-    ok.
-
 parse_mode(Mode) when is_list(Mode) ->
     parse_mode(list_to_binary(Mode));
 parse_mode(<<"r">>)   -> {ok, 1};
@@ -55,19 +52,12 @@ parse_mode(<<"erw">>) -> {ok, 7};
 parse_mode(<<>>)      -> {ok, 0};
 parse_mode(_)         -> {error, invalid_mode}. 
 
+parse_channel("/") -> {ok, 1};
 parse_channel(Path) ->
-    case string:tokens(Path, "/") of
-        [] ->
-            {ok, 1};
-        [Token] ->
-            try list_to_integer(Token) of
-                Channel ->
-                    {ok, Channel}
-            catch
-                error:badarg ->
-                    {error, invalid_channel}
-            end;
-        _ ->
+    try list_to_integer(hd(string:tokens(Path, "/"))) of
+        Channel -> {ok, Channel}
+    catch
+        error:badarg ->
             {error, invalid_channel}
     end.
 
@@ -102,3 +92,15 @@ ensure_started(AppName) ->
         ok -> ok;
         {error, {already_started, AppName}} -> ok
     end.
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+channel_parse_test() ->
+    ?assertEqual({ok, 1}, parse_channel("/")),
+    ?assertEqual({ok, 1}, parse_channel("/1")),
+    ?assertEqual({ok, 1}, parse_channel("/1/")),
+    ?assertEqual({ok, 2}, parse_channel("/2/")),
+    ?assertEqual({error, invalid_channel}, parse_channel("/a")),
+    ok.
+        
+-endif.

@@ -5,8 +5,12 @@
 -export([start_link/0]).
 -export([open/6]).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-        code_change/3]).
+-export([init/1]).
+-export([handle_call/3]).
+-export([handle_cast/2]).
+-export([handle_info/2]).
+-export([terminate/2]).
+-export([code_change/3]).
 
 %% External API
 
@@ -50,11 +54,14 @@ code_change(_OldVersion, State, _Extra) ->
 %% Internal API
 
 maybe_connect(Hostname, Port, State) ->
-    case dict:find({Hostname, Port}, State) of
-        {ok, Pid} ->
-            {ok, Pid, State};
-        error ->
-            {ok, Pid} = hydna_lib_domain:start_link(Hostname, Port),
-            {ok, Pid, dict:store({Hostname, Port}, Pid, State)}
-    end.
+    {ok, Pid} = hydna_lib_domain:start_link(Hostname, Port),
+    {ok, Pid, dict:store({Hostname, Port}, Pid, State)}.
 
+%% maybe_connect(Hostname, Port, State) ->
+%%     case dict:find({Hostname, Port}, State) of
+%%         {ok, Pid} ->
+%%             {ok, Pid, State};
+%%         error ->
+%%             {ok, Pid} = hydna_lib_domain:start_link(Hostname, Port),
+%%             {ok, Pid, dict:store({Hostname, Port}, Pid, State)}
+%%     end.

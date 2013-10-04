@@ -23,6 +23,7 @@
         port
     }).
 
+-define(HEARTBEAT, 0).
 -define(OPEN, 1).
 -define(DATA, 2).
 -define(EMIT, 3).
@@ -217,6 +218,8 @@ recv_payload(Pid, Socket, Len) ->
     Payload = case gen_tcp:recv(Socket, Len) of 
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_OK:3, Msg/binary>>} ->
             {open_allowed, Ch, Msg};
+        {ok, <<0:32, _:2, ?HEARTBEAT:3, 0:3, Msg/binary>>} ->
+            {heartbeat, Msg};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_REDIRECT:3, Msg/binary>>} ->
             {open_redirect, Ch, Msg};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_DENY:3, Reason/binary>>} ->
@@ -234,6 +237,8 @@ recv_payload(Pid, Socket, Len) ->
     case Payload of
         {disconnect, _} ->
             Pid ! Payload;
+        {heartbeat, _} ->
+            recv_header(Pid, Socket);
         _ ->
             Pid ! Payload,
             recv_header(Pid, Socket)
