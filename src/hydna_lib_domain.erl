@@ -49,9 +49,9 @@ open(Pid, Channel, Mode, Token, Mod) ->
     gen_server:call(Pid, {open, Channel, Mode, Token, Mod}).
 
 send(Pid, Channel, utf8, Message) ->
-    gen_server:cast(Pid, {send, Channel, 1, Message});
-send(Pid, Channel, raw, Message) ->
-    gen_server:cast(Pid, {send, Channel, 0, Message}).
+    gen_server:cast(Pid, {send, Channel, 0, Message});
+send(Pid, Channel, binary, Message) ->
+    gen_server:cast(Pid, {send, Channel, 1, Message}).
 
 emit(Pid, Channel, Message) ->
     gen_server:cast(Pid, {emit, Channel, Message}).
@@ -81,8 +81,9 @@ handle_call({open, Channel, Mode, Token, Mod}, _From, State) ->
 handle_call(_Message, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({send, Channel, Encoding, Message}, State) ->
-    Data = <<Channel:32, 0:2, ?DATA:3, Encoding:3, Message/binary>>,
+handle_cast({send, Channel, CType, Message}, State) ->
+    Priority = 0,
+    Data = <<Channel:32, 0:1, CType:1, ?DATA:3, Priority:3, Message/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
     ok = gen_tcp:send(State#state.socket, Packet),
@@ -224,9 +225,9 @@ recv_payload(Pid, Socket, Len) ->
             {open_redirect, Ch, Msg};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_DENY:3, Reason/binary>>} ->
             {open_denied, Ch, Reason};
-        {ok, <<Ch:32, _:2, ?DATA:3, Prio:2, Enc:1, Message/binary>>} ->
-            Encoding = case Enc of 0 -> raw; 1 -> utf8 end,
-            {data, Ch, Prio, Encoding, Message};
+        {ok, <<Ch:32, _:1, CT:1, ?DATA:3, Prio:3, Message/binary>>} ->
+            CType = case CT of 0 -> utf8; 1 -> binary end,
+            {data, Ch, Prio, CType, Message};
         {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_END:3/integer, Message/binary>>} ->
             {close, Ch, Message};
         {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_SIGNAL:3/integer, Message/binary>>} ->

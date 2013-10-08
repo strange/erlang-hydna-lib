@@ -36,11 +36,11 @@ init(Domain, Channel) ->
 
 handle_open(_Message, State) ->
     %% lager:info("Channel opened! ~p", [now()]),
-    %% self() ! {send, <<"Hello world!">>},
+    self() ! {send, <<"Hello world!">>},
     {ok, State}.
 
-handle_message(Message, _Meta, State) ->
-    lager:info("Message: ~p", [Message]),
+handle_message(Message, Meta, State) ->
+    lager:info("Message: ~p, ~p", [Message, Meta]),
     {ok, State}.
 
 handle_signal(Message, State) ->
@@ -56,7 +56,7 @@ handle_error(Reason, State) ->
     {ok, State}.
 
 handle_info({send, Message}, State) ->
-    {message, Message, State};
+    {message, Message, binary, State};
 handle_info(_Message, State) ->
     {ok, State}.
 
