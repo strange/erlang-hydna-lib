@@ -3,7 +3,6 @@
 -behaviour(hydna_lib_handler).
 
 -export([test/0]).
--export([test2/0]).
 
 -export([init/2]).
 -export([handle_open/2]).
@@ -14,20 +13,12 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
-test2() ->
-    hydna_lib:start(),
-    start_n(2000).
-
-start_n(0) -> ok;
-start_n(N) ->
-    hydna_lib:open("test-aug-2013.hydna.net/" ++ integer_to_list(N), <<"rw">>, ?MODULE),
-    start_n(N - 1).
-
 test() ->
     hydna_lib:start(),
-    hydna_lib:open("localhost:7010/1", <<"rw">>, ?MODULE),
-    ok.
-    %% hydna_lib:send("http://localhost:7010/1", <<"test">>).
+    [hydna_lib:open("localhost:7010/" ++ integer_to_list(I) , <<"rw">>, ?MODULE)
+     || I <- lists:seq(0, 10000)].
+
+    %% hydna_lib:open("localhost:7010/hello", <<"rw">>, ?MODULE).
 
 %% Callbacks
 
@@ -40,11 +31,11 @@ handle_open(_Message, State) ->
     {ok, State}.
 
 handle_message(Message, _Meta, State) ->
-    lager:info("Message: ~p", [Message]),
+    %% lager:info("Message: ~p", [Message]),
     {ok, State}.
 
 handle_signal(Message, State) ->
-    lager:info("Signal: ~p", [Message]),
+    %% lager:info("Signal: ~p", [Message]),
     {ok, State}.
 
 handle_close(Reason, State) ->

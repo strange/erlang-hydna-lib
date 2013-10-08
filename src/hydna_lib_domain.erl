@@ -4,6 +4,7 @@
 
 -export([start_link/2]).
 -export([open/5]).
+-export([open/4]).
 -export([send/4]).
 -export([emit/3]).
 
@@ -16,8 +17,8 @@
 
 -record(state, {
         connection_state,
-        channel_handlers,
-        open_requests_buf = [],
+        handlers = [],
+        resolve_buf = [],
         socket,
         hostname,
         port
@@ -27,6 +28,7 @@
 -define(OPEN, 1).
 -define(DATA, 2).
 -define(EMIT, 3).
+-define(RSLV, 4).
 
 -define(OPEN_OK, 0).
 -define(OPEN_REDIRECT, 1).
@@ -45,33 +47,36 @@
 start_link(Hostname, Port) ->
     gen_server:start_link(?MODULE, [Hostname, Port], []).
 
-open(Pid, Channel, Mode, Token, Mod) ->
-    gen_server:call(Pid, {open, Channel, Mode, Token, Mod}).
+open(Pid, Path, Mode, Token, Mod) ->
+    gen_server:call(Pid, {open, Path, Mode, Token, Mod}).
 
-send(Pid, Channel, utf8, Message) ->
-    gen_server:cast(Pid, {send, Channel, 1, Message});
-send(Pid, Channel, raw, Message) ->
-    gen_server:cast(Pid, {send, Channel, 0, Message}).
+open(Pid, Path, Mode, Token) ->
+    gen_server:cast(Pid, {open, Path, Mode, Token}).
 
-emit(Pid, Channel, Message) ->
-    gen_server:cast(Pid, {emit, Channel, Message}).
+send(Pid, Path, utf8, Message) ->
+    gen_server:cast(Pid, {send, Path, 1, Message});
+send(Pid, Path, raw, Message) ->
+    gen_server:cast(Pid, {send, Path, 0, Message}).
+
+emit(Pid, Path, Message) ->
+    gen_server:cast(Pid, {emit, Path, Message}).
 
 %% Callbacks
 
 init([Hostname, Port]) ->
     State = #state{
         hostname = Hostname,
-        port = Port,
-        channel_handlers = dict:new()
+        port = Port
     },
     {ok, State}.
 
-handle_call({open, Channel, Mode, Token, Mod}, _From, State) ->
+handle_call({open, Path, Mode, Token, Mod}, _From, State) ->
     Hostname = State#state.hostname,
-    case hydna_lib_channel:start_link(Mod, Hostname, self(), Channel) of
+    case hydna_lib_channel:start_link(Mod, Hostname, self(), Path,
+                                      Mode, Token) of
         {ok, Pid} ->
             erlang:monitor(process, Pid),
-            State0 = add_open_request(Channel, Mode, Token, Pid, State),
+            State0 = add_resolve_request(Path, Pid, State),
             State1 = maybe_connect(self(), State0),
             {reply, {ok, Pid}, State1};
         Other ->
@@ -81,15 +86,22 @@ handle_call({open, Channel, Mode, Token, Mod}, _From, State) ->
 handle_call(_Message, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({send, Channel, Encoding, Message}, State) ->
-    Data = <<Channel:32, 0:2, ?DATA:3, Encoding:3, Message/binary>>,
+handle_cast({open, Pointer, Mode, Token}, State) ->
+    Data = <<Pointer:32, 0:2, ?OPEN:3, Mode:3, Token/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
     ok = gen_tcp:send(State#state.socket, Packet),
     {noreply, State};
 
-handle_cast({emit, Channel, Message}, State) ->
-    Data = <<Channel:32, 0:2, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>,
+handle_cast({send, Pointer, Encoding, Message}, State) ->
+    Data = <<Pointer:32, 0:2, ?DATA:3, Encoding:3, Message/binary>>,
+    Len = byte_size(Data) + 2,
+    Packet = <<Len:16, Data/binary>>,
+    ok = gen_tcp:send(State#state.socket, Packet),
+    {noreply, State};
+
+handle_cast({emit, Pointer, Message}, State) ->
+    Data = <<Pointer:32, 0:2, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
     ok = gen_tcp:send(State#state.socket, Packet),
@@ -100,43 +112,51 @@ handle_cast(_Message, State) ->
 
 handle_info({connected, Socket}, State) ->
     State0 = State#state{ socket = Socket, connection_state = connected },
-    State1 = send_open_requests(State0),
+    State1 = send_resolve_requests(State0),
     {noreply, State1};
 
-handle_info({open_allowed, Channel, Message}, State) ->
-    {ok, Handler} = get_handler(Channel, State),
-    Handler ! {open_allowed, Channel, Message},
+handle_info({resolved, Pointer, Path}, State) ->
+    {ok, Handler} = get_handler(Path, State),
+    NewState = State#state{
+        handlers = lists:keyreplace(Path, 2, State#state.handlers,
+                                    {Pointer, Path, Handler})
+    },
+    Handler ! {resolved, Pointer},
+    {noreply, NewState};
+
+handle_info({open_allowed, Pointer, Message}, State) ->
+    {ok, Handler} = get_handler(Pointer, State),
+    Handler ! {open_allowed, Pointer, Message},
     {noreply, State};
 
-handle_info({open_denied, Channel, Message}, State) ->
-    {ok, Handler} = get_handler(Channel, State),
-    Handler ! {open_denied, Channel, Message},
+handle_info({open_denied, Pointer, Message}, State) ->
+    {ok, Handler} = get_handler(Pointer, State),
+    Handler ! {open_denied, Pointer, Message},
     {noreply, State};
 
-handle_info({data, Channel, Prio, Encoding, Message}, State) ->
-    {ok, Handler} = get_handler(Channel, State),
-    Handler ! {data, Channel, Prio, Encoding, Message},
+handle_info({data, Pointer, Prio, Encoding, Message}, State) ->
+    {ok, Handler} = get_handler(Pointer, State),
+    Handler ! {data, Pointer, Prio, Encoding, Message},
     {noreply, State};
 
 handle_info({emit, 0, Message}, State) ->
-    [Handler ! {emit, 0, Message} || {_, Handler}
-        <- dict:to_list(State#state.channel_handlers)],
+    [Handler ! {emit, 0, Message} || {_, _, Handler} <- State#state.handlers],
     {noreply, State};
 
-handle_info({emit, Channel, Message}, State) ->
-    {ok, Handler} = get_handler(Channel, State),
-    Handler ! {emit, Channel, Message},
+handle_info({emit, Pointer, Message}, State) ->
+    {ok, Handler} = get_handler(Pointer, State),
+    Handler ! {emit, Pointer, Message},
     {noreply, State};
 
 handle_info({disconnect, Reason}, State) ->
-    [Handler ! {disconnect, Reason} || {_, Handler}
-        <- dict:to_list(State#state.channel_handlers)],
+    [Handler ! {disconnect, Reason} || {_Pointer, _Path, Handler}
+        <- State#state.handlers],
     {noreply, State#state{connection_state = disconnected,
-            open_requests_buf = []}};
+            resolve_buf = [], handlers = []}};
 
 handle_info({error, Reason}, State) ->
-    [Handler ! {error, Reason} || {_, Handler}
-        <- dict:to_list(State#state.channel_handlers)],
+    [Handler ! {error, Reason} || {_, _, Handler}
+        <- State#state.handlers],
     {noreply, State};
 
 handle_info({'DOWN', _Ref, process, Pid, _Reason}, State) ->
@@ -156,13 +176,10 @@ code_change(_OldVersion, State, _Extra) ->
 %% Internal API
 
 remove_pid(Pid, State) ->
-    NewChannelHandlers = dict:filter(fun(_K, V) ->
-        V /= Pid
-    end, State#state.channel_handlers),
-    State#state{ channel_handlers = NewChannelHandlers }.
+    State#state{handlers = lists:keydelete(Pid, 3, State#state.handlers)}.
 
 maybe_connect(_Pid, #state{connection_state = connected} = State) ->
-    send_open_requests(State);
+    send_resolve_requests(State);
 maybe_connect(_Pid, #state{connection_state = connecting} = State) ->
     State;
 maybe_connect(Pid, State) ->
@@ -172,6 +189,7 @@ maybe_connect(Pid, State) ->
     State#state{connection_state = connecting}.
 
 connect(Pid, Hostname, Port) ->
+    lager:info("Connecting"),
     Opts = [{active, false}, {mode, binary}],
     case gen_tcp:connect(Hostname, Port, Opts) of
         {ok, Socket} ->
@@ -216,6 +234,8 @@ recv_header(Pid, Socket) ->
 
 recv_payload(Pid, Socket, Len) ->
     Payload = case gen_tcp:recv(Socket, Len) of 
+        {ok, <<Ch:32, _:2, ?RSLV:3, 0:3, Path/binary>>} ->
+            {resolved, Ch, Path};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_OK:3, Msg/binary>>} ->
             {open_allowed, Ch, Msg};
         {ok, <<0:32, _:2, ?HEARTBEAT:3, 0:3, Msg/binary>>} ->
@@ -225,7 +245,7 @@ recv_payload(Pid, Socket, Len) ->
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_DENY:3, Reason/binary>>} ->
             {open_denied, Ch, Reason};
         {ok, <<Ch:32, _:2, ?DATA:3, Prio:2, Enc:1, Message/binary>>} ->
-            Encoding = case Enc of 0 -> raw; 1 -> utf8 end,
+            Encoding = case Enc of 0 -> utf8; 1 -> raw end,
             {data, Ch, Prio, Encoding, Message};
         {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_END:3/integer, Message/binary>>} ->
             {close, Ch, Message};
@@ -255,36 +275,49 @@ encode_handshake_packet(Hostname) ->
         "\r\n\r\n"
     ], "\r\n").
 
-packet(Channel, Op, Flag, Data) ->
+packet(Pointer, Op, Flag, Data) ->
     Len = byte_size(Data) + 7,
-    <<Len:16, Channel:32, 0:2, Op:3, Flag:3, Data/binary>>.
+    <<Len:16, Pointer:32, 0:2, Op:3, Flag:3, Data/binary>>.
 
-send_open_requests(State) ->
+send_resolve_requests(State) ->
     #state{
-        open_requests_buf = OpenRequestsBuf,
+        resolve_buf = ResolveBuf,
         socket = Socket
     } = State,
     [begin
-        Packet = packet(Channel, ?OPEN, Mode, Token),
+        Packet = packet(0, ?RSLV, 0, Path),
         gen_tcp:send(Socket, Packet)
-    end || {Channel, Mode, Token} <- OpenRequestsBuf],
-    State#state{open_requests_buf = []}.    
+    end || Path <- ResolveBuf],
+    State#state{resolve_buf = []}.    
 
-add_open_request(Channel, Mode, Token, Pid, State) ->
+add_resolve_request(Path, Handler, State) ->
     #state{
-        channel_handlers = ChannelHandlers,
-        open_requests_buf = OpenRequestsBuf
+       handlers = Handlers,
+       resolve_buf = ResolveBuf
     } = State,
-    case get_handler(Channel, State) of 
-        {ok, _Pid} ->
-            Pid ! {error, handler_already_registered},
+    case get_handler(Path, State) of 
+        {ok, _Handler} ->
+            Handler ! {error, handler_already_registered},
             State;
         _ ->
             State#state{
-                channel_handlers = dict:store(Channel, Pid, ChannelHandlers),
-                open_requests_buf = [{Channel, Mode, Token}|OpenRequestsBuf]
+                handlers = [{unassigned, Path, Handler}|Handlers],
+                resolve_buf = [Path|ResolveBuf]
             }
     end.
 
-get_handler(Channel, State) ->
-    dict:find(Channel, State#state.channel_handlers).
+get_handler(Path, State) when is_binary(Path) ->
+    case lists:keyfind(Path, 2, State#state.handlers) of
+        {_Pointer, _Path, Handler} ->
+            {ok, Handler};
+        false ->
+            not_found
+    end;
+
+get_handler(Pointer, State) when is_integer(Pointer) ->
+    case lists:keyfind(Pointer, 1, State#state.handlers) of
+        {_Pointer, _Path, Handler} ->
+            {ok, Handler};
+        false ->
+            not_found
+    end.

@@ -52,14 +52,7 @@ parse_mode(<<"erw">>) -> {ok, 7};
 parse_mode(<<>>)      -> {ok, 0};
 parse_mode(_)         -> {error, invalid_mode}. 
 
-parse_channel("/") -> {ok, 1};
-parse_channel(Path) ->
-    try list_to_integer(hd(string:tokens(Path, "/"))) of
-        Channel -> {ok, Channel}
-    catch
-        error:badarg ->
-            {error, invalid_channel}
-    end.
+parse_channel(Path) -> {ok, list_to_binary(Path)}.
 
 parse_uri(URI) when is_binary(URI) ->
     parse_uri(binary_to_list(URI));

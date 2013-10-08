@@ -53,15 +53,15 @@ code_change(_OldVersion, State, _Extra) ->
 
 %% Internal API
 
-maybe_connect(Hostname, Port, State) ->
-    {ok, Pid} = hydna_lib_domain:start_link(Hostname, Port),
-    {ok, Pid, dict:store({Hostname, Port}, Pid, State)}.
-
 %% maybe_connect(Hostname, Port, State) ->
-%%     case dict:find({Hostname, Port}, State) of
-%%         {ok, Pid} ->
-%%             {ok, Pid, State};
-%%         error ->
-%%             {ok, Pid} = hydna_lib_domain:start_link(Hostname, Port),
-%%             {ok, Pid, dict:store({Hostname, Port}, Pid, State)}
-%%     end.
+%%     {ok, Pid} = hydna_lib_domain:start_link(Hostname, Port),
+%%     {ok, Pid, dict:store({Hostname, Port}, Pid, State)}.
+
+maybe_connect(Hostname, Port, State) ->
+    case dict:find({Hostname, Port}, State) of
+        {ok, Pid} ->
+            {ok, Pid, State};
+        error ->
+            {ok, Pid} = hydna_lib_domain:start_link(Hostname, Port),
+            {ok, Pid, dict:store({Hostname, Port}, Pid, State)}
+    end.

@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/4]).
+-export([start_link/6]).
 
 -export([init/1]).
 -export([handle_call/3]).
@@ -16,26 +16,32 @@
         handler_state,
         domain_name,
         domain_pid,
-        channel
+        channel,
+        channel_id,
+        path,
+        mode,
+        token
     }).
 
 %% External API
 
-start_link(Mod, DomainName, DomainPid, Channel) ->
-    Args = [Mod, DomainName, DomainPid, Channel],
+start_link(Mod, DomainName, DomainPid, Path, Mode, Token) ->
+    Args = [Mod, DomainName, DomainPid, Path, Mode, Token],
     gen_server:start_link(?MODULE, Args, []).
 
 %% Callbacks
 
-init([Mod, DomainName, DomainPid, Channel]) ->
-    try Mod:init(DomainName, Channel) of
+init([Mod, DomainName, DomainPid, Path, Mode, Token]) ->
+    try Mod:init(DomainName, Path) of
         {ok, HandlerState} ->
             State = #state{
                 handler_state = HandlerState,
                 handler_mod = Mod,
                 domain_name = DomainName,
                 domain_pid = DomainPid,
-                channel = Channel
+                path = Path,
+                mode = Mode,
+                token = Token
             },
             {ok, State};
         {stop, Reason} ->
@@ -51,6 +57,11 @@ handle_call(_Message, _From, State) ->
 
 handle_cast(_Message, State) ->
     {noreply, State}.
+
+handle_info({resolved, Channel}, State) ->
+    hydna_lib_domain:open(State#state.domain_pid, Channel, State#state.mode,
+                          State#state.token),
+    {noreply, State#state{channel = Channel}};
 
 handle_info({open_allowed, _Channel, Message}, State) ->
     handle_normal_response(handle_open, [Message], State);
