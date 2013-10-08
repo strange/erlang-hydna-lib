@@ -125,7 +125,7 @@ handle_normal_response(CallbackName, Args, State) ->
             {noreply, State#state{handler_state = NewHandlerState}};
         {message, Msg, Encoding, NewHandlerState} when is_binary(Msg) andalso
                                                   (Encoding =:= utf8 orelse
-                                                   Encoding =:= raw) ->
+                                                   Encoding =:= binary) ->
             hydna_lib_domain:send(State#state.domain_pid,
                 State#state.channel, Encoding, Msg),
             {noreply, State#state{handler_state = NewHandlerState}};
