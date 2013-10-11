@@ -67,7 +67,7 @@ parse_uri(URI) ->
             parse_uri("http://" ++ URI);
         {error, {malformed_url, _, _}} ->
             case string:tokens(URI, ":") of
-                Tokens when length(Tokens) =:= 2 ->
+                Parts when length(Parts) =:= 2 ->
                     parse_uri("http://" ++ URI);
                 _ ->
                     {error, invalid_uri}
