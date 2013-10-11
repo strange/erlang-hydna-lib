@@ -3,10 +3,11 @@
 -type state() :: term().
 -type reason() :: term().
 -type message() :: binary().
--type channel() :: 1..4294967295.
+-type channel() :: binary().
 -type domain() :: binary().
+-type opts() :: any().
 -type priority() :: 0..3.
--type encoding() :: raw | utf8.
+-type encoding() :: binary | utf8.
 -type meta_option() :: {encoding, encoding()} | {priority, priority()}.
 -type meta() :: [meta_option()].
 -type normal_return() :: {stop, state()}
@@ -17,7 +18,7 @@
     | {signal, message(), state()}.
 -type error_return() :: {ok, state()}.
 
--callback init(domain(), channel()) ->
+-callback init(domain(), channel(), opts()) ->
     {ok, state()} | {stop, reason()}.
 
 -callback handle_open(message(), state()) ->

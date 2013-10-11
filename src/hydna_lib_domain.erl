@@ -3,7 +3,8 @@
 -behaviour(gen_server).
 
 -export([start_link/2]).
--export([open/5]).
+-export([open/6]).
+
 -export([open/4]).
 -export([send/4]).
 -export([emit/3]).
@@ -47,8 +48,8 @@
 start_link(Hostname, Port) ->
     gen_server:start_link(?MODULE, [Hostname, Port], []).
 
-open(Pid, Path, Mode, Token, Mod) ->
-    gen_server:call(Pid, {open, Path, Mode, Token, Mod}).
+open(Pid, Path, Mode, Token, Mod, Opts) ->
+    gen_server:call(Pid, {open, Path, Mode, Token, Mod, Opts}).
 
 open(Pid, Path, Mode, Token) ->
     gen_server:cast(Pid, {open, Path, Mode, Token}).
@@ -70,9 +71,9 @@ init([Hostname, Port]) ->
     },
     {ok, State}.
 
-handle_call({open, Path, Mode, Token, Mod}, _From, State) ->
-    Hostname = State#state.hostname,
-    case hydna_lib_channel:start_link(Mod, Hostname, self(), Path,
+handle_call({open, Path, Mode, Token, Mod, Opts}, _From,
+            #state{hostname = Hostname} = State) ->
+    case hydna_lib_channel:start_link(Mod, Hostname, self(), Opts, Path,
                                       Mode, Token) of
         {ok, Pid} ->
             erlang:monitor(process, Pid),

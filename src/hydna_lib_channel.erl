@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/6]).
+-export([start_link/7]).
 
 -export([init/1]).
 -export([handle_call/3]).
@@ -25,14 +25,14 @@
 
 %% External API
 
-start_link(Mod, DomainName, DomainPid, Path, Mode, Token) ->
-    Args = [Mod, DomainName, DomainPid, Path, Mode, Token],
+start_link(Mod, DomainName, DomainPid, Opts, Path, Mode, Token) ->
+    Args = [Mod, DomainName, DomainPid, Opts, Path, Mode, Token],
     gen_server:start_link(?MODULE, Args, []).
 
 %% Callbacks
 
-init([Mod, DomainName, DomainPid, Path, Mode, Token]) ->
-    try Mod:init(DomainName, Path) of
+init([Mod, DomainName, DomainPid, Opts, Path, Mode, Token]) ->
+    try Mod:init(DomainName, Path, Opts) of
         {ok, HandlerState} ->
             State = #state{
                 handler_state = HandlerState,

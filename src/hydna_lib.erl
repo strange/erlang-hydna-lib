@@ -3,6 +3,7 @@
 -export([start/0]).
 
 -export([open/3]).
+-export([open/4]).
 -export([send/2]).
 -export([emit/2]).
 
@@ -13,9 +14,13 @@ start() ->
     ok.
 
 open(URI, RawMode, HandlerMod) ->
+    open(URI, RawMode, HandlerMod, []).
+
+open(URI, RawMode, HandlerMod, Opts) ->
     case {parse_uri(URI), parse_mode(RawMode)} of
-        {{ok, _Protocol, Domain, Port, Chan, Token, _URI2}, {ok, Mode}} ->
-            hydna_lib_proxy:open(Domain, Port, Chan, Mode, Token, HandlerMod);
+        {{ok, _Protocol, Domain, Port, Path, Token, _URI2}, {ok, Mode}} ->
+            hydna_lib_proxy:open(Domain, Port, Path, Mode, Token,
+                                 HandlerMod, Opts);
         Other ->
             error_tuple(Other)
     end.

@@ -3,9 +3,8 @@
 -behaviour(hydna_lib_handler).
 
 -export([test/0]).
--export([load/1]).
 
--export([init/2]).
+-export([init/3]).
 -export([handle_open/2]).
 -export([handle_message/3]).
 -export([handle_signal/2]).
@@ -14,20 +13,15 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
-load(Path) ->
-    hydna_lib:start(),
-    hydna_lib:open("localhost:7010/" ++ Path, <<"rw">>, ?MODULE).
-
 test() ->
     hydna_lib:start(),
-    [hydna_lib:open("localhost:7010/" ++ integer_to_list(I) , <<"rw">>, ?MODULE)
-     || I <- lists:seq(0, 10)].
-
-    %% hydna_lib:open("localhost:7010/hello", <<"rw">>, ?MODULE).
+    Opts = [test],
+    hydna_lib:open("public.hydna.net/cli-test", <<"rw">>, ?MODULE, Opts).
 
 %% Callbacks
 
-init(Domain, Channel) ->
+init(Domain, Channel, Opts) ->
+    lager:info("Opts: ~p", [Opts]),
     {ok, [{domain, Domain}, {channel, Channel}]}.
 
 handle_open(_Message, State) ->
