@@ -52,7 +52,10 @@ parse_mode(<<"erw">>) -> {ok, 7};
 parse_mode(<<>>)      -> {ok, 0};
 parse_mode(_)         -> {error, invalid_mode}. 
 
-parse_channel(Path) -> {ok, list_to_binary(Path)}.
+parse_channel([]) ->
+    {ok, <<"/">>};
+parse_channel(Path) ->
+    {ok, list_to_binary(Path)}.
 
 parse_uri(URI) when is_binary(URI) ->
     parse_uri(binary_to_list(URI));
@@ -92,11 +95,9 @@ ensure_started(AppName) ->
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 channel_parse_test() ->
-    ?assertEqual({ok, 1}, parse_channel("/")),
-    ?assertEqual({ok, 1}, parse_channel("/1")),
-    ?assertEqual({ok, 1}, parse_channel("/1/")),
-    ?assertEqual({ok, 2}, parse_channel("/2/")),
-    ?assertEqual({error, invalid_channel}, parse_channel("/a")),
+    ?assertEqual({ok, <<"/">>}, parse_channel("/")),
+    ?assertEqual({ok, <<"/">>}, parse_channel("")),
+    ?assertEqual({ok, <<"/1234">>}, parse_channel("/1234")),
     ok.
         
 -endif.
