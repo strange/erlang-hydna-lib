@@ -3,6 +3,7 @@
 -behaviour(hydna_lib_handler).
 
 -export([test/0]).
+-export([load/1]).
 
 -export([init/2]).
 -export([handle_open/2]).
@@ -13,10 +14,14 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
+load(Path) ->
+    hydna_lib:start(),
+    hydna_lib:open("localhost:7010/" ++ Path, <<"rw">>, ?MODULE).
+
 test() ->
     hydna_lib:start(),
     [hydna_lib:open("localhost:7010/" ++ integer_to_list(I) , <<"rw">>, ?MODULE)
-     || I <- lists:seq(0, 10000)].
+     || I <- lists:seq(0, 10)].
 
     %% hydna_lib:open("localhost:7010/hello", <<"rw">>, ?MODULE).
 
@@ -26,16 +31,15 @@ init(Domain, Channel) ->
     {ok, [{domain, Domain}, {channel, Channel}]}.
 
 handle_open(_Message, State) ->
-    %% lager:info("Channel opened! ~p", [now()]),
-    self() ! {send, <<"Hello world!">>},
+    lager:info("Channel opened! ~p", [State]),
     {ok, State}.
 
 handle_message(Message, Meta, State) ->
-    lager:info("Message: ~p, ~p", [Message, Meta]),
+    lager:info("Message: ~p, ~p, ~p", [Message, Meta, State]),
     {ok, State}.
 
 handle_signal(Message, State) ->
-    %% lager:info("Signal: ~p", [Message]),
+    lager:info("Signal: ~p (~p)", [Message, State]),
     {ok, State}.
 
 handle_close(Reason, State) ->

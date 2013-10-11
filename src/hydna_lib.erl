@@ -72,13 +72,16 @@ parse_uri(URI) ->
         {ok, {Protocol, _Credentials, Host, Port, Path, Q}} ->
             case parse_channel(Path) of
                 {ok, Channel} ->
-                    {ok, Protocol, Host, Port, Channel, list_to_binary(Q), URI};
+                    {ok, Protocol, Host, Port, Channel, clean_token(Q), URI};
                 Other ->
                     Other
             end;
         _Other ->
             {error, invalid_uri}
     end.
+
+clean_token([]) -> <<>>;
+clean_token([$?|T]) -> list_to_binary(T).
 
 ensure_started(AppName) ->
     case application:start(AppName) of
