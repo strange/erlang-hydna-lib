@@ -191,7 +191,6 @@ maybe_connect(Pid, State) ->
     State#state{connection_state = connecting}.
 
 connect(Pid, Hostname, Port) ->
-    lager:info("Connecting"),
     Opts = [{active, false}, {mode, binary}],
     case gen_tcp:connect(Hostname, Port, Opts) of
         {ok, Socket} ->
