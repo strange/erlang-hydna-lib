@@ -13,49 +13,44 @@ start() ->
     application:start(hydna_lib),
     ok.
 
-open(URI, RawMode, HandlerMod) ->
-    open(URI, RawMode, HandlerMod, []).
+open(URI, Modes, HandlerMod) ->
+    open(URI, Modes, HandlerMod, []).
 
-open(URI, RawMode, HandlerMod, Opts) ->
-    case {parse_uri(URI), parse_mode(RawMode)} of
-        {{ok, _Protocol, Domain, Port, Path, Token, _URI2}, {ok, Mode}} ->
-            hydna_lib_proxy:open(Domain, Port, Path, Mode, Token,
-                                 HandlerMod, Opts);
-        Other ->
-            error_tuple(Other)
+open(URI, Modes, HandlerMod, Opts) ->
+    case parse_uri(URI) of
+        {ok, _Protocol, Domain, Port, Path, Token, _URI2} ->
+            hydna_lib_proxy:open(Domain, Port, Path, parse_mode(Modes),
+                                 Token, HandlerMod, Opts);
+        {error, invalid_uri} ->
+            {error, invalid_uri}
     end.
 
 send(URI, Message) ->
     case parse_uri(URI) of
         {ok, _Protocol, _Domain, _Port, _Chan, _Token, URI2} ->
             hydna_lib_push:send(URI2, Message);
-        Other ->
-            error_tuple(Other)
+        {error, invalid_uri} ->
+            {error, invalid_uri}
     end.
 
 emit(URI, Message) ->
     case parse_uri(URI) of
         {ok, _Protocol, _Domain, _Port, _Chan, _Token, URI2} ->
             hydna_lib_push:emit(URI2, Message);
-        Other ->
-            error_tuple(Other)
+        {error, invalid_uri} ->
+            {error, invalid_uri}
     end.
 
 %% Internal API
 
-error_tuple({{error, Reason}, _}) -> {error, Reason};
-error_tuple({_, {error, Reason}}) -> {error, Reason}.
+parse_mode(Modes) when is_list(Modes) ->
+    Modes2 = sets:to_list(sets:from_list(Modes)),
+    lists:foldl(fun(Mode, Acc) -> Acc + parse_mode(Mode) end, 0, Modes2);
 
-parse_mode(Mode) when is_list(Mode) ->
-    parse_mode(list_to_binary(Mode));
-parse_mode(<<"r">>)   -> {ok, 1};
-parse_mode(<<"w">>)   -> {ok, 2};
-parse_mode(<<"rw">>)  -> {ok, 3};
-parse_mode(<<"e">>)   -> {ok, 4};
-parse_mode(<<"er">>)  -> {ok, 5};
-parse_mode(<<"erw">>) -> {ok, 7};
-parse_mode(<<>>)      -> {ok, 0};
-parse_mode(_)         -> {error, invalid_mode}. 
+parse_mode(read)  -> 1;
+parse_mode(write) -> 2;
+parse_mode(emit)  -> 4;
+parse_mode(_)     -> erlang:error(badarg).
 
 parse_channel([]) ->
     {ok, <<"/">>};
@@ -78,12 +73,9 @@ parse_uri(URI) ->
                     {error, invalid_uri}
             end;
         {ok, {Protocol, _Credentials, Host, Port, Path, Q}} ->
-            case parse_channel(Path) of
-                {ok, Channel} ->
-                    {ok, Protocol, Host, Port, Channel, clean_token(Q), URI};
-                Other ->
-                    Other
-            end;
+            {ok, Channel} = parse_channel(Path),
+            Token = clean_token(Q),
+            {ok, Protocol, Host, Port, Channel, Token, URI};
         _Other ->
             {error, invalid_uri}
     end.
@@ -103,6 +95,13 @@ channel_parse_test() ->
     ?assertEqual({ok, <<"/">>}, parse_channel("/")),
     ?assertEqual({ok, <<"/">>}, parse_channel("")),
     ?assertEqual({ok, <<"/1234">>}, parse_channel("/1234")),
+    ok.
+
+mode_parse_test() ->
+    ?assertEqual(1, parse_mode([read])),
+    ?assertEqual(1, parse_mode([read, read])),
+    ?assertEqual(3, parse_mode([read, write])),
+    ?assertEqual(7, parse_mode([read, write, emit])),
     ok.
         
 -endif.

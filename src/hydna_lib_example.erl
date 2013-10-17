@@ -2,7 +2,7 @@
 
 -behaviour(hydna_lib_handler).
 
--export([test/0]).
+-export([test/1]).
 
 -export([init/3]).
 -export([handle_open/2]).
@@ -13,10 +13,9 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
-test() ->
+test(URI) ->
     hydna_lib:start(),
-    Opts = [test],
-    hydna_lib:open("public.hydna.net/cli-test", <<"rw">>, ?MODULE, Opts).
+    hydna_lib:open(URI, [read, write], ?MODULE).
 
 %% Callbacks
 
@@ -24,8 +23,8 @@ init(Domain, Channel, Opts) ->
     lager:info("Opts: ~p", [Opts]),
     {ok, [{domain, Domain}, {channel, Channel}]}.
 
-handle_open(_Message, State) ->
-    lager:info("Channel opened! ~p", [State]),
+handle_open(Message, State) ->
+    lager:info("Channel opened! ~p ~p", [Message, State]),
     {ok, State}.
 
 handle_message(Message, Meta, State) ->
