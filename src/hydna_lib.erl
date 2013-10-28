@@ -23,8 +23,9 @@ open(URI, Modes, HandlerMod) ->
 open(URI, Modes, HandlerMod, Opts) ->
     case parse_uri(URI) of
         {ok, Protocol, Domain, Port, Path, Token, _URI2} ->
-            hydna_lib_proxy:open(Protocol, Domain, Port, Path,
-                                 parse_mode(Modes), Token, HandlerMod, Opts);
+            {ok, Pid} = hydna_lib_sup:start_domain(Protocol, Domain, Port),
+            hydna_lib_domain:open(Pid, Path, parse_mode(Modes), Token,
+                                  HandlerMod, Opts);
         {error, invalid_uri} ->
             {error, invalid_uri}
     end.
