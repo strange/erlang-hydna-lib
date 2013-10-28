@@ -207,7 +207,6 @@ connect(Pid, Transport, Hostname, Port) ->
         {ok, Socket} ->
             send_handshake(Pid, Transport, Socket, Hostname);
         {error, Reason} ->
-            lager:error("Could not connect dude!"),
             Pid ! {disconnect, Reason}
     end.
 
@@ -217,8 +216,12 @@ send_handshake(Pid, Transport, Socket, Hostname) ->
     case Transport:recv(Socket, 0) of
         {ok, {http_response, _, 101, _}} ->
             discard_header(Pid, Transport, Socket, 3);
-        {ok, {http_response, _, 400, _}} ->
-            Pid ! {disconnect, invalid_domain};
+        {ok, {http_response, _, 403, _}} ->
+            Pid ! {disconnect, unsupported_protocol};
+        {ok, {http_response, _, 404, _}} ->
+            Pid ! {disconnect, domain_not_found};
+        {ok, {http_response, _, 503, _}} ->
+            Pid ! {disconnect, max_connections_reached};
         {error, Reason} ->
             lager:info("Got error"),
             Pid ! {disconnect, Reason}
