@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/2]).
+-export([start_link/3]).
 -export([open/6]).
 
 -export([open/4]).
@@ -22,7 +22,9 @@
         resolve_buf = [],
         socket,
         hostname,
-        port
+        port,
+        protocol,
+        transport
     }).
 
 -define(HEARTBEAT, 0).
@@ -45,8 +47,8 @@
 
 %% External API
 
-start_link(Hostname, Port) ->
-    gen_server:start_link(?MODULE, [Hostname, Port], []).
+start_link(Protocol, Hostname, Port) ->
+    gen_server:start_link(?MODULE, [Protocol, Hostname, Port], []).
 
 open(Pid, Path, Mode, Token, Mod, Opts) ->
     gen_server:call(Pid, {open, Path, Mode, Token, Mod, Opts}).
@@ -64,10 +66,16 @@ emit(Pid, Path, Message) ->
 
 %% Callbacks
 
-init([Hostname, Port]) ->
+init([Protocol, Hostname, Port]) ->
+    Transport = case Protocol of 
+        http -> gen_tcp;
+        https -> ssl
+    end,
     State = #state{
         hostname = Hostname,
-        port = Port
+        port = Port,
+        protocol = Protocol,
+        transport = Transport
     },
     {ok, State}.
 
@@ -87,26 +95,28 @@ handle_call({open, Path, Mode, Token, Mod, Opts}, _From,
 handle_call(_Message, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({open, Pointer, Mode, Token}, State) ->
+handle_cast({open, Pointer, Mode, Token},
+            #state{transport = Transport} = State) ->
     Data = <<Pointer:32, 0:2, ?OPEN:3, Mode:3, Token/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
-    ok = gen_tcp:send(State#state.socket, Packet),
+    ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
-handle_cast({send, Pointer, CType, Message}, State) ->
+handle_cast({send, Pointer, CType, Message},
+            #state{transport = Transport} = State) ->
     Priority = 0,
     Data = <<Pointer:32, 0:1, CType:1, ?DATA:3, Priority:3, Message/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
-    ok = gen_tcp:send(State#state.socket, Packet),
+    ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
 handle_cast({emit, Pointer, Message}, State) ->
     Data = <<Pointer:32, 0:2, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
-    ok = gen_tcp:send(State#state.socket, Packet),
+    ok = ssl:send(State#state.socket, Packet),
     {noreply, State};
 
 handle_cast(_Message, State) ->
@@ -186,55 +196,60 @@ maybe_connect(_Pid, #state{connection_state = connecting} = State) ->
     State;
 maybe_connect(Pid, State) ->
     spawn(fun() ->
-        connect(Pid, State#state.hostname, State#state.port)
+        connect(Pid, State#state.transport, State#state.hostname,
+                State#state.port)
     end),
     State#state{connection_state = connecting}.
 
-connect(Pid, Hostname, Port) ->
+connect(Pid, Transport, Hostname, Port) ->
     Opts = [{active, false}, {mode, binary}],
-    case gen_tcp:connect(Hostname, Port, Opts) of
+    case Transport:connect(Hostname, Port, Opts) of
         {ok, Socket} ->
-            send_handshake(Pid, Socket, Hostname);
+            send_handshake(Pid, Transport, Socket, Hostname);
         {error, Reason} ->
+            lager:error("Could not connect dude!"),
             Pid ! {disconnect, Reason}
     end.
 
-send_handshake(Pid, Socket, Hostname) ->
-    inet:setopts(Socket, [{packet, http_bin}]),
-    gen_tcp:send(Socket, encode_handshake_packet(Hostname)),
-    case gen_tcp:recv(Socket, 0) of
+send_handshake(Pid, Transport, Socket, Hostname) ->
+    setopts(Transport, Socket, [{packet, http_bin}]),
+    Transport:send(Socket, encode_handshake_packet(Hostname)),
+    case Transport:recv(Socket, 0) of
         {ok, {http_response, _, 101, _}} ->
-            discard_header(Pid, Socket, 3);
+            discard_header(Pid, Transport, Socket, 3);
         {ok, {http_response, _, 400, _}} ->
-            Pid ! {disconnect, invalid_domain}
+            Pid ! {disconnect, invalid_domain};
+        {error, Reason} ->
+            lager:info("Got error"),
+            Pid ! {disconnect, Reason}
     end.
 
-discard_header(Pid, Socket, 0) ->
-    case gen_tcp:recv(Socket, 0) of 
+discard_header(Pid, Transport, Socket, 0) ->
+    case Transport:recv(Socket, 0) of 
         {ok, http_eoh} ->
             %% we're done with the http protocol now and can switch back to
             %% using the raw mode.
-            inet:setopts(Socket, [{packet, raw}]),
+            setopts(Transport, Socket, [{packet, raw}]),
             Pid ! {connected, Socket},
-            recv_header(Pid, Socket)
+            recv_header(Pid, Transport, Socket)
     end;
 
-discard_header(Pid, Socket, N) ->
-    case gen_tcp:recv(Socket, 0) of 
+discard_header(Pid, Transport, Socket, N) ->
+    case Transport:recv(Socket, 0) of 
         {ok, {http_header, _ ,_ ,_ ,_ }} ->
-            discard_header(Pid, Socket, N - 1)
+            discard_header(Pid, Transport, Socket, N - 1)
     end.
 
-recv_header(Pid, Socket) ->
-    case gen_tcp:recv(Socket, 2) of 
+recv_header(Pid, Transport, Socket) ->
+    case Transport:recv(Socket, 2) of 
         {ok, <<Len:16/integer>>} ->
-            recv_payload(Pid, Socket, Len - 2);
+            recv_payload(Pid, Transport, Socket, Len - 2);
         {error, Reason} ->
             Pid ! {disconnect, Reason}
     end.
 
-recv_payload(Pid, Socket, Len) ->
-    Payload = case gen_tcp:recv(Socket, Len) of 
+recv_payload(Pid, Transport, Socket, Len) ->
+    Payload = case Transport:recv(Socket, Len) of 
         {ok, <<Ch:32, _:2, ?RSLV:3, 0:3, Path/binary>>} ->
             {resolved, Ch, Path};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_OK:3, Msg/binary>>} ->
@@ -259,10 +274,10 @@ recv_payload(Pid, Socket, Len) ->
         {disconnect, _} ->
             Pid ! Payload;
         {heartbeat, _} ->
-            recv_header(Pid, Socket);
+            recv_header(Pid, Transport, Socket);
         _ ->
             Pid ! Payload,
-            recv_header(Pid, Socket)
+            recv_header(Pid, Transport, Socket)
     end.
 
 encode_handshake_packet(Hostname) ->
@@ -283,11 +298,12 @@ packet(Pointer, Op, Flag, Data) ->
 send_resolve_requests(State) ->
     #state{
         resolve_buf = ResolveBuf,
+        transport = Transport,
         socket = Socket
     } = State,
     [begin
         Packet = packet(0, ?RSLV, 0, Path),
-        gen_tcp:send(Socket, Packet)
+        Transport:send(Socket, Packet)
     end || Path <- ResolveBuf],
     State#state{resolve_buf = []}.    
 
@@ -322,3 +338,8 @@ get_handler(Pointer, State) when is_integer(Pointer) ->
         false ->
             not_found
     end.
+
+setopts(ssl, Socket, Opts) ->
+    ssl:setopts(Socket, Opts);
+setopts(_, Socket, Opts) ->
+    inet:setopts(Socket, Opts).

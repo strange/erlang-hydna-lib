@@ -3,6 +3,7 @@
 -behaviour(hydna_lib_handler).
 
 -export([test/1]).
+-export([testn/2]).
 
 -export([init/3]).
 -export([handle_open/2]).
@@ -15,16 +16,35 @@
 
 test(URI) ->
     hydna_lib:start(),
-    hydna_lib:open(URI, [read, write], ?MODULE).
+    hydna_lib:open(URI, [read, write], ?MODULE, [erlang:now()]).
+
+testn(Domain, N) ->
+    hydna_lib:start(),
+    Now = erlang:now(),
+    testn(Domain, Now, N).
+
+testn(_Domain, _Now, 0) -> ok;
+testn(Domain, Now, N) ->
+    Path = list_to_binary(integer_to_list(N)),
+    hydna_lib:open(<<Domain/binary, "/", Path/binary>>, [read, write], ?MODULE, [Now]),
+    testn(Domain, N - 1).
 
 %% Callbacks
 
 init(Domain, Channel, Opts) ->
-    lager:info("Opts: ~p", [Opts]),
-    {ok, [{domain, Domain}, {channel, Channel}]}.
+    [Now] = Opts,
+    {ok, [{channel, Channel}, {now, Now}]}.
 
 handle_open(Message, State) ->
-    lager:info("Channel opened! ~p ~p", [Message, State]),
+    lager:info("Opened channel!"),
+    case proplists:get_value(channel, State) of
+        <<"/1">> ->
+            Now = proplists:get_value(now, State),
+            Diff = timer:now_diff(erlang:now(), Now),
+            lager:info("Channels opened in: ~p", [Diff]);
+        _Other ->
+            npp
+    end,
     {ok, State}.
 
 handle_message(Message, Meta, State) ->

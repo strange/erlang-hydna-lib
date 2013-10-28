@@ -10,6 +10,10 @@
 start() ->
     ensure_started(lager),
     ensure_started(inets),
+    ensure_started(crypto),
+    ensure_started(asn1),
+    ensure_started(public_key),
+    ensure_started(ssl),
     application:start(hydna_lib),
     ok.
 
@@ -18,9 +22,9 @@ open(URI, Modes, HandlerMod) ->
 
 open(URI, Modes, HandlerMod, Opts) ->
     case parse_uri(URI) of
-        {ok, _Protocol, Domain, Port, Path, Token, _URI2} ->
-            hydna_lib_proxy:open(Domain, Port, Path, parse_mode(Modes),
-                                 Token, HandlerMod, Opts);
+        {ok, Protocol, Domain, Port, Path, Token, _URI2} ->
+            hydna_lib_proxy:open(Protocol, Domain, Port, Path,
+                                 parse_mode(Modes), Token, HandlerMod, Opts);
         {error, invalid_uri} ->
             {error, invalid_uri}
     end.
