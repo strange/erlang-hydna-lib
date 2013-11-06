@@ -96,11 +96,11 @@ handle_cast({send, Pointer, CType, Message},
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
-handle_cast({emit, Pointer, Message}, State) ->
+handle_cast({emit, Pointer, Message}, #state{transport = Transport} = State) ->
     Data = <<Pointer:32, 0:2, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>,
     Len = byte_size(Data) + 2,
     Packet = <<Len:16, Data/binary>>,
-    ok = ssl:send(State#state.socket, Packet),
+    ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
 handle_cast(_Message, State) ->
