@@ -1,10 +1,10 @@
 make:
-	rebar compile
+	rebar update-deps compile
 
 run:
-	ERL_FLAGS="-pa $PWD/ebin $PWD/deps/*/ebin -boot start_sasl" erl
+	erl -pa ebin deps/*/ebin -boot start_sasl
 
 test:
-	ERL_FLAGS="-pa $PWD/ebin $PWD/deps/*/ebin -boot start_sasl" rebar eunit skip_deps=true
+	rebar eunit skip_deps=true
 
 .PHONY: test
