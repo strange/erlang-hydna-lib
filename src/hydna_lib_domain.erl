@@ -82,7 +82,7 @@ handle_call(_Message, _From, State) ->
 handle_cast({open, Pointer, Mode, Token},
             #state{transport = Transport} = State) ->
     Data = <<Pointer:32, 0:2, ?OPEN:3, Mode:3, Token/binary>>,
-    Len = byte_size(Data) + 2,
+    Len = byte_size(Data),
     Packet = <<Len:16, Data/binary>>,
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
@@ -91,14 +91,14 @@ handle_cast({send, Pointer, CType, Message},
             #state{transport = Transport} = State) ->
     Priority = 0,
     Data = <<Pointer:32, 0:1, CType:1, ?DATA:3, Priority:3, Message/binary>>,
-    Len = byte_size(Data) + 2,
+    Len = byte_size(Data),
     Packet = <<Len:16, Data/binary>>,
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
 handle_cast({emit, Pointer, Message}, #state{transport = Transport} = State) ->
     Data = <<Pointer:32, 0:2, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>,
-    Len = byte_size(Data) + 2,
+    Len = byte_size(Data),
     Packet = <<Len:16, Data/binary>>,
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
@@ -216,7 +216,7 @@ discard_header(Pid, Transport, Socket, 0) ->
         {ok, http_eoh} ->
             %% we're done with the http protocol now and can switch back to
             %% using the raw mode.
-            setopts(Transport, Socket, [{packet, raw}]),
+            setopts(Transport, Socket, [binary, {packet, raw}]),
             Pid ! {connected, Socket},
             recv_header(Pid, Transport, Socket)
     end;
@@ -230,7 +230,7 @@ discard_header(Pid, Transport, Socket, N) ->
 recv_header(Pid, Transport, Socket) ->
     case Transport:recv(Socket, 2) of 
         {ok, <<Len:16/integer>>} ->
-            recv_payload(Pid, Transport, Socket, Len - 2);
+            recv_payload(Pid, Transport, Socket, Len);
         {error, Reason} ->
             Pid ! {disconnect, Reason}
     end.
@@ -238,6 +238,7 @@ recv_header(Pid, Transport, Socket) ->
 recv_payload(Pid, Transport, Socket, Len) ->
     Payload = case Transport:recv(Socket, Len) of 
         {ok, <<Ch:32, _:2, ?RSLV:3, 0:3, Path/binary>>} ->
+            lager:info("Resolved: ~p to ~p", [Path, Ch]),
             {resolved, Ch, Path};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_OK:3, Msg/binary>>} ->
             {open_allowed, Ch, Msg};
@@ -279,7 +280,7 @@ encode_handshake_packet(Hostname) ->
     ], "\r\n").
 
 packet(Pointer, Op, Flag, Data) ->
-    Len = byte_size(Data) + 7,
+    Len = byte_size(Data) + 5,
     <<Len:16, Pointer:32, 0:2, Op:3, Flag:3, Data/binary>>.
 
 send_resolve_requests(State) ->
@@ -290,6 +291,7 @@ send_resolve_requests(State) ->
     } = State,
     [begin
         Packet = packet(0, ?RSLV, 0, Path),
+        lager:info("Sending ~p", [Packet]),
         Transport:send(Socket, Packet)
     end || Path <- ResolveBuf],
     State#state{resolve_buf = []}.    
