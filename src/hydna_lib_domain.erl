@@ -216,9 +216,9 @@ discard_header(Pid, Transport, Socket, 0) ->
         {ok, http_eoh} ->
             %% we're done with the http protocol now and can switch back to
             %% using the raw mode.
-            setopts(Transport, Socket, [{packet, raw}]),
+            setopts(Transport, Socket, [{packet, 2}]),
             Pid ! {connected, Socket},
-            recv_header(Pid, Transport, Socket)
+            recv_packet(Pid, Transport, Socket)
     end;
 
 discard_header(Pid, Transport, Socket, N) ->
@@ -227,16 +227,8 @@ discard_header(Pid, Transport, Socket, N) ->
             discard_header(Pid, Transport, Socket, N - 1)
     end.
 
-recv_header(Pid, Transport, Socket) ->
-    case Transport:recv(Socket, 2) of 
-        {ok, <<Len:16/integer>>} ->
-            recv_payload(Pid, Transport, Socket, Len - 2);
-        {error, Reason} ->
-            Pid ! {disconnect, Reason}
-    end.
-
-recv_payload(Pid, Transport, Socket, Len) ->
-    Payload = case Transport:recv(Socket, Len) of 
+recv_packet(Pid, Transport, Socket) ->
+    Payload = case Transport:recv(Socket, 0) of 
         {ok, <<Ch:32, _:2, ?RSLV:3, 0:3, Path/binary>>} ->
             {resolved, Ch, Path};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_OK:3, Msg/binary>>} ->
@@ -261,10 +253,10 @@ recv_payload(Pid, Transport, Socket, Len) ->
         {disconnect, _} ->
             Pid ! Payload;
         {heartbeat, _} ->
-            recv_header(Pid, Transport, Socket);
+            recv_packet(Pid, Transport, Socket);
         _ ->
             Pid ! Payload,
-            recv_header(Pid, Transport, Socket)
+            recv_packet(Pid, Transport, Socket)
     end.
 
 encode_handshake_packet(Hostname) ->
