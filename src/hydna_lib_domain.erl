@@ -81,25 +81,20 @@ handle_call(_Message, _From, State) ->
 
 handle_cast({open, Pointer, Mode, Token},
             #state{transport = Transport} = State) ->
-    Data = <<Pointer:32, 0:2, ?OPEN:3, Mode:3, Token/binary>>,
-    Len = byte_size(Data) + 2,
-    Packet = <<Len:16, Data/binary>>,
+    Packet = <<Pointer:32, 0:2, ?OPEN:3, Mode:3, Token/binary>>,
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
 handle_cast({send, Pointer, CType, Message},
             #state{transport = Transport} = State) ->
     Priority = 0,
-    Data = <<Pointer:32, 0:1, CType:1, ?DATA:3, Priority:3, Message/binary>>,
-    Len = byte_size(Data) + 2,
-    Packet = <<Len:16, Data/binary>>,
+    lager:info("~p ~p ~p", [Pointer, CType, Message]),
+    Packet = <<Pointer:32, 0:1, CType:1, ?DATA:3, Priority:3, Message/binary>>,
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
 handle_cast({emit, Pointer, Message}, #state{transport = Transport} = State) ->
-    Data = <<Pointer:32, 0:2, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>,
-    Len = byte_size(Data) + 2,
-    Packet = <<Len:16, Data/binary>>,
+    Packet = <<Pointer:32, 0:2, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>,
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
 
@@ -247,7 +242,9 @@ recv_packet(Pid, Transport, Socket) ->
         {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_SIGNAL:3/integer, Message/binary>>} ->
             {emit, Ch, Message};
         {error, Reason} ->
-            {disconnect, Reason}
+            {disconnect, Reason};
+        Other ->
+            lager:info("OTher: ~p", [Other])
     end,
     case Payload of
         {disconnect, _} ->
@@ -271,8 +268,7 @@ encode_handshake_packet(Hostname) ->
     ], "\r\n").
 
 packet(Pointer, Op, Flag, Data) ->
-    Len = byte_size(Data) + 7,
-    <<Len:16, Pointer:32, 0:2, Op:3, Flag:3, Data/binary>>.
+    <<Pointer:32, 0:2, Op:3, Flag:3, Data/binary>>.
 
 send_resolve_requests(State) ->
     #state{

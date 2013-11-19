@@ -64,7 +64,7 @@ handle_error(Reason, State) ->
     {ok, State}.
 
 handle_info({send, Message}, State) ->
-    {message, Message, binary, State};
+    {message, Message, utf8, State};
 handle_info(_Message, State) ->
     {ok, State}.
 
