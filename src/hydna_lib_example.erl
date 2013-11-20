@@ -37,14 +37,15 @@ init(Domain, Channel, Opts) ->
 
 handle_open(Message, State) ->
     lager:info("Opened channel!"),
-    case proplists:get_value(channel, State) of
-        <<"/1">> ->
-            Now = proplists:get_value(now, State),
-            Diff = timer:now_diff(erlang:now(), Now),
-            lager:info("Channels opened in: ~p", [Diff]);
-        _Other ->
-            npp
-    end,
+    %% case proplists:get_value(channel, State) of
+    %%     <<"/1">> ->
+    %%         Now = proplists:get_value(now, State),
+    %%         Diff = timer:now_diff(erlang:now(), Now),
+    %%         lager:info("Channels opened in: ~p", [Diff]);
+    %%     _Other ->
+    %%         nop
+    %% end,
+    self() ! {send, <<"Test from Erlang">>},
     {ok, State}.
 
 handle_message(Message, Meta, State) ->
@@ -65,7 +66,8 @@ handle_error(Reason, State) ->
 
 handle_info({send, Message}, State) ->
     {message, Message, utf8, State};
-handle_info(_Message, State) ->
+handle_info(Message, State) ->
+    lager:info("Other message: ~p", [Message]),
     {ok, State}.
 
 terminate(Reason, _State) ->

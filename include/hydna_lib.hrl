@@ -15,3 +15,5 @@
 -define(MODE_READ, 1).
 -define(MODE_WRITE, 2).
 -define(MODE_EMIT, 4).
+
+-define(PAYLOAD_MAX_LENGTH, 16#FFFA).

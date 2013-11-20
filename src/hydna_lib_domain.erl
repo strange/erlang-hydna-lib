@@ -88,7 +88,6 @@ handle_cast({open, Pointer, Mode, Token},
 handle_cast({send, Pointer, CType, Message},
             #state{transport = Transport} = State) ->
     Priority = 0,
-    lager:info("~p ~p ~p", [Pointer, CType, Message]),
     Packet = <<Pointer:32, 0:1, CType:1, ?DATA:3, Priority:3, Message/binary>>,
     ok = Transport:send(State#state.socket, Packet),
     {noreply, State};
@@ -234,12 +233,11 @@ recv_packet(Pid, Transport, Socket) ->
             {open_redirect, Ch, Msg};
         {ok, <<Ch:32, _:2, ?OPEN:3, ?OPEN_DENY:3, Reason/binary>>} ->
             {open_denied, Ch, Reason};
-        {ok, <<Ch:32, _:1, CT:1, ?DATA:3, Prio:3, Message/binary>>} ->
-            CType = case CT of 0 -> utf8; 1 -> binary end,
-            {data, Ch, Prio, CType, Message};
-        {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_END:3/integer, Message/binary>>} ->
+        {ok, <<Ch:32, _:1, CType:1, ?DATA:3, Prio:3, Message/binary>>} ->
+            {data, Ch, Prio, ctype(CType), Message};
+        {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_END:3, Message/binary>>} ->
             {close, Ch, Message};
-        {ok, <<Ch:32, _:2, ?EMIT:3, ?EMIT_SIGNAL:3/integer, Message/binary>>} ->
+        {ok, <<Ch:32, _:1, _CType:1, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>} ->
             {emit, Ch, Message};
         {error, Reason} ->
             {disconnect, Reason};
@@ -318,3 +316,7 @@ setopts(ssl, Socket, Opts) ->
     ssl:setopts(Socket, Opts);
 setopts(_, Socket, Opts) ->
     inet:setopts(Socket, Opts).
+
+ctype(0) -> utf8;
+ctype(1) -> binary.
+

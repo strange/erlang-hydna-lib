@@ -1,8 +1,10 @@
 # Erlang bindings for Hydna
 
-http://www.hydna.com/
+The bindings are now fairly stable. There are still a few things missing, some
+adjustments to the API to make, and more tests to run before I'll make this an
+official library.
 
-A work in progress!
+Read more about Hydna here: http://www.hydna.com/
 
 ## Usage
 
@@ -71,17 +73,3 @@ hydna_lib:start().
 hydna_lib:send("http://public.hydna.net/", <<"A message!">>).
 hydna_lib:emit("http://public.hydna.net/", <<"A message!">>).
 ```
-
-
-## TODO
-
-* I just wrote this ... will need to do some testing :)
-* `handle_message/3` takes a proplist (`Meta`) as it's second argument. I'm
-  considering expanding the list into two separate arguments: `Encoding` and
-  `Priority`.
-* Most callbacks used to take a `Channel`-argument. I moved the argument to
-  `init/2` as it cannot change within the lifespan of a process. This resulted
-  in shorter function signatures, but makes it harder to pattern match on
-  channel (when using the same handler module for multiple channels) and I
-  need to create a way to distinguish between channel-related- and domain-wide
-  errors.
