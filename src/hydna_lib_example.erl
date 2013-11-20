@@ -3,6 +3,7 @@
 -behaviour(hydna_lib_handler).
 
 -export([test/1]).
+-export([test/2]).
 -export([testn/2]).
 
 -export([init/3]).
@@ -14,9 +15,11 @@
 -export([handle_info/2]).
 -export([terminate/2]).
 
-test(URI) ->
+test(URI) -> test(URI, [read, write]).
+
+test(URI, Modes) ->
     hydna_lib:start(),
-    hydna_lib:open(URI, [read, write], ?MODULE, [erlang:now()]).
+    hydna_lib:open(URI, Modes, ?MODULE, [erlang:now()]).
 
 testn(Domain, N) ->
     hydna_lib:start(),
@@ -65,7 +68,7 @@ handle_error(Reason, State) ->
     {ok, State}.
 
 handle_info({send, Message}, State) ->
-    {message, Message, utf8, State};
+    {message, Message, binary, State};
 handle_info(Message, State) ->
     lager:info("Other message: ~p", [Message]),
     {ok, State}.
