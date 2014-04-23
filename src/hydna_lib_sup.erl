@@ -37,5 +37,6 @@ start_domain(Protocol, Hostname, Port) ->
     end.
 
 create_domain_ref(Protocol, Hostname, Port) ->
-    list_to_atom(string:join(["hydna_lib_domain", atom_to_list(Protocol),
-                              Hostname, integer_to_list(Port)], "_")).
+    binary_to_atom(base64:encode(crypto:strong_rand_bytes(128)), utf8).
+    %% list_to_atom(string:join(["hydna_lib_domain", atom_to_list(Protocol),
+    %%                           Hostname, integer_to_list(Port)], "_")).

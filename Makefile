@@ -1,3 +1,5 @@
+SHELL = /bin/bash
+
 make:
 	rebar update-deps compile
 

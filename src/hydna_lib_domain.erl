@@ -82,8 +82,13 @@ handle_call(_Message, _From, State) ->
 handle_cast({open, Pointer, Mode, Token},
             #state{transport = Transport} = State) ->
     Packet = <<Pointer:32, 0:2, ?OPEN:3, Mode:3, Token/binary>>,
-    ok = Transport:send(State#state.socket, Packet),
-    {noreply, State};
+    case Transport:send(State#state.socket, Packet) of
+        ok ->
+            {noreply, State};
+        {error, Reason} ->
+            lager:info("Error open: ~p", [Reason]),
+            {stop, Reason}
+    end;
 
 handle_cast({send, Pointer, CType, Message},
             #state{transport = Transport} = State) ->
@@ -185,12 +190,17 @@ connect(Pid, Transport, Hostname, Port) ->
         {ok, Socket} ->
             send_handshake(Pid, Transport, Socket, Hostname);
         {error, Reason} ->
+            lager:info("Disconnect: ~p", [Reason]),
             Pid ! {disconnect, Reason}
     end.
 
 send_handshake(Pid, Transport, Socket, Hostname) ->
     setopts(Transport, Socket, [{packet, http_bin}]),
-    Transport:send(Socket, encode_handshake_packet(Hostname)),
+    case Transport:send(Socket, encode_handshake_packet(Hostname)) of
+        ok -> ok;
+        {error, Reason2} ->
+            lager:info("HS error: ~p", [Reason2])
+    end,
     case Transport:recv(Socket, 0) of
         {ok, {http_response, _, 101, _}} ->
             discard_header(Pid, Transport, Socket, 3);
@@ -201,7 +211,7 @@ send_handshake(Pid, Transport, Socket, Hostname) ->
         {ok, {http_response, _, 503, _}} ->
             Pid ! {disconnect, max_connections_reached};
         {error, Reason} ->
-            lager:info("Got error"),
+            lager:info("Got error: ~p", [Reason]),
             Pid ! {disconnect, Reason}
     end.
 
@@ -240,6 +250,7 @@ recv_packet(Pid, Transport, Socket) ->
         {ok, <<Ch:32, _:1, _CType:1, ?EMIT:3, ?EMIT_SIGNAL:3, Message/binary>>} ->
             {emit, Ch, Message};
         {error, Reason} ->
+            lager:info("recv packet error: ~p", [Reason]),
             {disconnect, Reason};
         Other ->
             lager:info("OTher: ~p", [Other])
