@@ -85,15 +85,15 @@ handle_signal(Message, State) ->
     {ok, State}.
 
 handle_close(Reason, State) ->
-    %% lager:info("Close: ~p", [Reason]),
+    lager:info("Close: ~p", [Reason]),
     Receiver = proplists:get_value(receiver, State),
-    %% Receiver ! closed,
+    Receiver ! closed,
     {ok, State}.
 
 handle_error(Reason, State) ->
     lager:info("Error: ~p", [Reason]),
     Receiver = proplists:get_value(receiver, State),
-    %% Receiver ! error,
+    Receiver ! error,
     {ok, State}.
 
 handle_info({send, Message}, State) ->
